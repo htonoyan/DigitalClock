@@ -1,0 +1,13 @@
+msb																							lsb
+min_tens	min_ones	min_ones	min_tens	hr_ones		hr_tens		hr_tens		hr_ones
+J6			J8			J9			J7			J5			J3			J2			J4
+b a f g		b a f g		e d c p		e d c p		e d c p		e d c p		b a f g		b a f g
+	 28			 24			 20			 16			 12			  8			  4			  0
+
+b a f g
+p c d e
+
+PCINT1 - 13
+PCINT2 - 14
+PCINT21 - 9
+PCINT22 - 10
