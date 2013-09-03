@@ -6,8 +6,8 @@
 void initialize (void)
 {
 	//configure IO
-	DDRB = 0;
-	DDRC = 0b00011110;
+	DDRB = 0b00000100;
+	DDRC = 0b00011010;
 	DDRD = 0;
 	
 	PORTB = 0b11111111;

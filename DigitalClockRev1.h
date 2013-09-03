@@ -1,7 +1,7 @@
 #define disp_data_port PORTC
 #define disp_data_bit 1
 
-#define disp_OE_port PORTC
+#define disp_OE_port PORTB
 #define disp_OE_bit 2
 
 #define disp_clk_port PORTC
@@ -22,5 +22,5 @@
 #define button_4_port PORTB
 #define button_4_bit 1
 
-#define button_2_port PORTB
+#define button_2_port PORTC
 #define button_2_bit 2
