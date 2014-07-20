@@ -1,5 +1,7 @@
+#define F_CPU 1000000UL // 1 MHz
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
 #include "DigitalClockRev1.h"
 #include "Display.h"
 
@@ -15,7 +17,16 @@ void initialize (void)
 	PORTD = 0b01111111;
 
 	//todo set power reduction register (PRR)
-	//todo configure external interrupts
+
+	// configure external interrupts
+    // B1 = Button 4 = PCINT1
+    // B2 = Button 2 = PCINT2
+    // D5 = Button 1 = PCINT21
+    // D6 = Button 3 = PCINT22
+    
+    PCMSK0 = _BV(PCINT1) | _BV(PCINT2);
+    PCMSK2 = _BV(PCINT21) | _BV(PCINT22);
+    PCICR = _BV(PCIE0) | _BV(PCIE2);
 
 	//configure asynchronous timer registers
 	TCCR2A = 0;
@@ -52,6 +63,63 @@ int main (void)
 	return 0;
 }
 
+void ISR_buttonPress(void)
+{
+    PCICR = 0; // Disable pin change interrupts to avoid bouncing causing issues
+	
+    if(PORTD&_BV(5)) // Button 1 (Right-Up)
+    {
+        if(global_minutes != 59)
+        {
+            global_minutes++;
+        }
+        else
+        {
+            global_minutes = 0;
+        }
+        global_seconds = 0;
+        TCNT2 = 0;
+    }
+    else if(PORTB&_BV(2)) // Button 2 (Left-Up)
+    {
+        if(global_hours != 23)
+        {
+            global_hours++;
+        }
+        else
+        {
+            global_hours = 0;
+        }
+    }
+    else if(PORTD&_BV(6)) // Button 3 (Right-Down)
+    {
+        if(global_minutes != 0)
+        {
+            global_minutes--;
+        }
+        else
+        {
+            global_minutes = 59;
+        }
+        global_seconds = 0;
+        TCNT2 = 0;
+    }
+    else if(PORTB&_BV(1)) // Button 4 (Left-down)
+    {
+        if(global_hours != 0)
+        {
+            global_hours--;
+        }
+        else
+        {
+            global_hours = 23;
+        }
+    }
+    
+    PCICR = _BV(PCIE0) | _BV(PCIE2);
+    updateDisplay( global_minutes, global_seconds );
+}
+
 ISR(TIMER2_OVF_vect)
 {
 	global_seconds++;
@@ -75,8 +143,14 @@ ISR(TIMER2_OVF_vect)
 	// todo: go to sleep
 }
 
-void ISR_buttonPress (void)
+ISR(PCINT0_vect)
 {
-	// check which button
-	// increment time
+    sei();
+    ISR_buttonPress();
+}
+
+ISR(PCINT2_vect)
+{
+    sei();
+    ISR_buttonPress();
 }
