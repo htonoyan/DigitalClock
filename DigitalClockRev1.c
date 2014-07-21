@@ -24,7 +24,7 @@ void initialize (void)
     // D5 = Button 1 = PCINT21
     // D6 = Button 3 = PCINT22
     
-    PCMSK0 = _BV(PCINT1) | _BV(PCINT2);
+    PCMSK0 = _BV(PCINT1);
     PCMSK1 = _BV(PCINT10);
     PCMSK2 = _BV(PCINT21) | _BV(PCINT22);
     PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
@@ -36,6 +36,13 @@ void initialize (void)
 	ASSR = _BV(AS2); // clock Timer/Counter2 from a crystal Oscillator
 	
 	//configure 16-bit timer register
+//    Fast PWM Mode - TOP=OCR1A
+//    Set OC1B on compare match, clear OC1B at BOTTOM
+//    Clock: clk_I/O (no prescale)
+    TCCR1A = _BV(COM1B1) | _BV(COM1B0) | _BV(WGM11) | _BV(WGM10);
+    TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS10);
+    OCR1A = 5000; // Reset PWM when counter reaches 5000, should be 200Hz.
+    OCR1B = 2500;
 
 	//configure analog comparator
 	
@@ -48,17 +55,15 @@ void initialize (void)
 volatile uint8_t global_hours = 0;
 volatile uint8_t global_minutes = 0;
 volatile uint8_t global_seconds = 0;
+volatile uint8_t known_time = 0;
 
 int main (void)
 {
-//	volatile uint8_t testHour = 10;
-//	volatile uint8_t testMinute = 49;
-
-//	volatile uint32_t testTime;
 	initialize();
 	sei(); // enable global interrupts
 	
 	disp_OE_port &= ~_BV(disp_OE_bit); // enable display
+    updateDisplay( global_hours, global_minutes );
 	//todo: sleep
 	while(1);
 	return 0;
@@ -118,6 +123,7 @@ void ISR_buttonPress(void)
         }
     }
     
+    known_time = 1;
     updateDisplay( global_hours, global_minutes );
     PCIFR |= _BV(PCIF0) | _BV(PCIF1) | _BV(PCIF2); // clear interrupt flags if they may have occured
     PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
@@ -137,14 +143,27 @@ ISR(TIMER2_OVF_vect)
 		global_minutes = 0;
 		global_hours++;
         updateDisplay( global_hours, global_minutes );
-        
 	}
 	if( global_hours > 24 )
 	{
 		global_hours = 0;
         updateDisplay( global_hours, global_minutes );
 	}
-    
+
+    // Dim during night hours
+    if( global_hours < 5 || global_hours > 21 )
+    {
+        OCR1B = 1000;
+    }
+    else
+    {
+        OCR1B = 5000;
+    }
+//    if the time is reset, flash display
+    if(known_time == 0 && global_seconds % 2)
+    {
+        OCR1B = 1;
+    }
 
 	// todo: go to sleep
 }
