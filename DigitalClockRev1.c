@@ -20,13 +20,14 @@ void initialize (void)
 
 	// configure external interrupts
     // B1 = Button 4 = PCINT1
-    // B2 = Button 2 = PCINT2
+    // C2 = Button 2 = PCINT10
     // D5 = Button 1 = PCINT21
     // D6 = Button 3 = PCINT22
     
     PCMSK0 = _BV(PCINT1) | _BV(PCINT2);
+    PCMSK1 = _BV(PCINT10);
     PCMSK2 = _BV(PCINT21) | _BV(PCINT22);
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
+    PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
 
 	//configure asynchronous timer registers
 	TCCR2A = 0;
@@ -66,8 +67,9 @@ int main (void)
 void ISR_buttonPress(void)
 {
     PCICR = 0; // Disable pin change interrupts to avoid bouncing causing issues
-	
-    if(PORTD&_BV(5)) // Button 1 (Right-Up)
+    _delay_ms(10);
+
+    if(!(PIND&_BV(5))) // Button 1 (Right-Up)
     {
         if(global_minutes != 59)
         {
@@ -80,18 +82,7 @@ void ISR_buttonPress(void)
         global_seconds = 0;
         TCNT2 = 0;
     }
-    else if(PORTB&_BV(2)) // Button 2 (Left-Up)
-    {
-        if(global_hours != 23)
-        {
-            global_hours++;
-        }
-        else
-        {
-            global_hours = 0;
-        }
-    }
-    else if(PORTD&_BV(6)) // Button 3 (Right-Down)
+    else if(!(PIND&_BV(6))) // Button 3 (Right-Down)
     {
         if(global_minutes != 0)
         {
@@ -104,7 +95,18 @@ void ISR_buttonPress(void)
         global_seconds = 0;
         TCNT2 = 0;
     }
-    else if(PORTB&_BV(1)) // Button 4 (Left-down)
+    else if(!(PINC&_BV(2))) // Button 2 (Left-Up)
+    {
+        if(global_hours != 23)
+        {
+            global_hours++;
+        }
+        else
+        {
+            global_hours = 0;
+        }
+    }
+    else if(!(PINB&_BV(1))) // Button 4 (Left-down)
     {
         if(global_hours != 0)
         {
@@ -116,8 +118,9 @@ void ISR_buttonPress(void)
         }
     }
     
-    PCICR = _BV(PCIE0) | _BV(PCIE2);
-    updateDisplay( global_minutes, global_seconds );
+    updateDisplay( global_hours, global_minutes );
+    PCIFR |= _BV(PCIF0) | _BV(PCIF1) | _BV(PCIF2); // clear interrupt flags if they may have occured
+    PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
 }
 
 ISR(TIMER2_OVF_vect)
@@ -127,23 +130,32 @@ ISR(TIMER2_OVF_vect)
 	{
 		global_seconds = 0;
 		global_minutes++;
+        updateDisplay( global_hours, global_minutes );
 	}
 	if( global_minutes > 59 )
 	{
 		global_minutes = 0;
 		global_hours++;
+        updateDisplay( global_hours, global_minutes );
+        
 	}
 	if( global_hours > 24 )
 	{
 		global_hours = 0;
-	} 	
-
-	updateDisplay( global_minutes, global_seconds );
+        updateDisplay( global_hours, global_minutes );
+	}
+    
 
 	// todo: go to sleep
 }
 
 ISR(PCINT0_vect)
+{
+    sei();
+    ISR_buttonPress();
+}
+
+ISR(PCINT1_vect)
 {
     sei();
     ISR_buttonPress();
