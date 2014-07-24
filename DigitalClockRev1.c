@@ -2,39 +2,12 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <avr/sleep.h>
 #include "DigitalClockRev1.h"
 #include "Display.h"
 
-void initialize (void)
+void initialize_display(void)
 {
-	//configure IO
-	DDRB = 0b00000100;
-	DDRC = 0b00011010;
-	DDRD = 0;
-	
-	PORTB = 0b11111111;
-	PORTC = 0b01000101;
-	PORTD = 0b01111111;
-
-	//todo set power reduction register (PRR)
-
-	// configure external interrupts
-    // B1 = Button 4 = PCINT1
-    // C2 = Button 2 = PCINT10
-    // D5 = Button 1 = PCINT21
-    // D6 = Button 3 = PCINT22
-    
-    PCMSK0 = _BV(PCINT1);
-    PCMSK1 = _BV(PCINT10);
-    PCMSK2 = _BV(PCINT21) | _BV(PCINT22);
-    PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
-
-	//configure asynchronous timer registers
-	TCCR2A = 0;
-	TCCR2B = _BV(CS22) | _BV(CS20); // set prescaler to 128 (32,768 Hz / 128 = 256 counts / sec)
-	TIMSK2 = _BV(TOIE2); // enable Timer/Counter2 Overflow interrupt (TOV2 bit set in TIFR2)
-	ASSR = _BV(AS2); // clock Timer/Counter2 from a crystal Oscillator
-	
 	//configure 16-bit timer register
 //    Fast PWM Mode - TOP=OCR1A
 //    Set OC1B on compare match, clear OC1B at BOTTOM
@@ -44,12 +17,69 @@ void initialize (void)
     OCR1A = 5000; // Reset PWM when counter reaches 5000, should be 200Hz.
     OCR1B = 2500;
 
-	//configure analog comparator
-	
-	//configure ADC
-	
-	//todo set interrupts
+	disp_OE_port &= ~_BV(disp_OE_bit); // enable display
+}
 
+void disable_display(void)
+{
+    TCCR1B &= ~_BV(CS12) & ~_BV(CS11) & ~_BV(CS10); // Set Timer1 clock source to none
+    disp_OE_port |= _BV(disp_OE_bit); // disable display
+}
+
+void disable_buttons(void)
+{
+    PCICR = 0; // Button interrupts disabled
+}
+
+void enable_buttons(void)
+{
+    PCIFR |= _BV(PCIF0) | _BV(PCIF1) | _BV(PCIF2); // clear interrupt flags if they may have occurred
+    PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
+}
+
+void initialize_buttons(void)
+{
+	// configure external interrupts
+    // B1 = Button 4 = PCINT1
+    // C2 = Button 2 = PCINT10
+    // D5 = Button 1 = PCINT21
+    // D6 = Button 3 = PCINT22
+
+    PCMSK0 = _BV(PCINT1);
+    PCMSK1 = _BV(PCINT10);
+    PCMSK2 = _BV(PCINT21) | _BV(PCINT22);
+    PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
+}
+
+void initialize(void)
+{
+	//configure IO
+	DDRB = 0b00000100;
+	DDRC = 0b00011010;
+	DDRD = 0;
+
+	PORTB = 0b11111111;
+	PORTC = 0b01000101;
+	PORTD = 0b01111111;
+
+	//todo set power reduction register (PRR)
+
+	//configure asynchronous timer registers
+	TCCR2A = 0;
+	TCCR2B = _BV(CS22) | _BV(CS20); // set prescaler to 128 (32,768 Hz / 128 = 256 counts / sec)
+	TIMSK2 = _BV(TOIE2); // enable Timer/Counter2 Overflow interrupt (TOV2 bit set in TIFR2)
+	ASSR = _BV(AS2); // clock Timer/Counter2 from a crystal Oscillator
+
+	//configure analog comparator
+    // Analog comparator multiplexer disabled (AIN1 applied to negative input)
+    // AC bandgap selected (takes ~70us to stabilize)
+    // AC interrupt enabled on output toggle
+    ADCSRB = 0;
+    ACSR = _BV(ACBG);
+    DIDR1 = _BV(AIN1D); // Disable digital pin AIN1
+
+    _delay_ms(1); // give time for analog voltage and timer to stabilize
+    ACSR |= _BV(ACIE); // Enable AC interrupt
 }
 
 volatile uint8_t global_hours = 0;
@@ -57,24 +87,34 @@ volatile uint8_t global_minutes = 0;
 volatile uint8_t global_seconds = 0;
 volatile uint8_t known_time = 0;
 
-int main (void)
+// wake-up flags
+volatile uint8_t button_pressed = 0;
+volatile uint8_t second_passed = 0;
+volatile uint8_t power_change = 0;
+
+void handle_power(void)
 {
-	initialize();
-	sei(); // enable global interrupts
-	
-	disp_OE_port &= ~_BV(disp_OE_bit); // enable display
-    updateDisplay( global_hours, global_minutes );
-	//todo: sleep
-	while(1);
-	return 0;
+    _delay_us(8); // wait to synchronize register with AC output
+    if(!(ACSR & _BV(ACO)))
+    {
+        // We are plugged in
+        initialize_display();
+        enable_buttons();
+    }
+    else
+    {
+        // We are on battery power, turn off display and buttons
+        disable_display();
+        disable_buttons();
+    }
 }
 
-void ISR_buttonPress(void)
+void handle_button(void)
 {
-    PCICR = 0; // Disable pin change interrupts to avoid bouncing causing issues
+    disable_buttons();
     _delay_ms(10);
 
-    if(!(PIND&_BV(5))) // Button 1 (Right-Up)
+    if(!(button_1_pin&_BV(button_1_bit))) // Button 1 (Right-Up)
     {
         if(global_minutes != 59)
         {
@@ -87,7 +127,7 @@ void ISR_buttonPress(void)
         global_seconds = 0;
         TCNT2 = 0;
     }
-    else if(!(PIND&_BV(6))) // Button 3 (Right-Down)
+    else if(!(button_3_pin&_BV(button_3_bit))) // Button 3 (Right-Down)
     {
         if(global_minutes != 0)
         {
@@ -100,7 +140,7 @@ void ISR_buttonPress(void)
         global_seconds = 0;
         TCNT2 = 0;
     }
-    else if(!(PINC&_BV(2))) // Button 2 (Left-Up)
+    else if(!(button_2_pin&_BV(button_2_bit))) // Button 2 (Left-Up)
     {
         if(global_hours != 23)
         {
@@ -111,7 +151,7 @@ void ISR_buttonPress(void)
             global_hours = 0;
         }
     }
-    else if(!(PINB&_BV(1))) // Button 4 (Left-down)
+    else if(!(button_4_pin&_BV(button_4_bit))) // Button 4 (Left-down)
     {
         if(global_hours != 0)
         {
@@ -122,33 +162,27 @@ void ISR_buttonPress(void)
             global_hours = 23;
         }
     }
-    
+    enable_buttons();
     known_time = 1;
-    updateDisplay( global_hours, global_minutes );
-    PCIFR |= _BV(PCIF0) | _BV(PCIF1) | _BV(PCIF2); // clear interrupt flags if they may have occured
-    PCICR = _BV(PCIE0) | _BV(PCIE1) | _BV(PCIE2);
 }
 
-ISR(TIMER2_OVF_vect)
+void increment_time(void)
 {
 	global_seconds++;
 	if( global_seconds > 59 )
 	{
 		global_seconds = 0;
 		global_minutes++;
-        updateDisplay( global_hours, global_minutes );
 	}
 	if( global_minutes > 59 )
 	{
 		global_minutes = 0;
 		global_hours++;
-        updateDisplay( global_hours, global_minutes );
 	}
 	if( global_hours > 24 )
 	{
 		global_hours = 0;
-        updateDisplay( global_hours, global_minutes );
-	}
+    }
 
     // Dim during night hours
     if( global_hours < 5 || global_hours > 21 )
@@ -159,29 +193,93 @@ ISR(TIMER2_OVF_vect)
     {
         OCR1B = 5000;
     }
-//    if the time is reset, flash display
-    if(known_time == 0 && global_seconds % 2)
+ // if the time is reset, flash display
+    if((known_time == 0) && (global_seconds % 2))
     {
         OCR1B = 1;
     }
+}
 
-	// todo: go to sleep
+int main(void)
+{
+	initialize();
+
+    sei();
+    if(!(ACSR & _BV(ACO)))
+    {
+        // We are plugged in
+        initialize_display();
+        initialize_buttons();
+        set_sleep_mode(SLEEP_MODE_IDLE);
+        sleep_mode();
+    }
+    else
+    {
+        // We are on battery power, go to sleep without display or buttons
+        set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+        sleep_mode();
+    }
+    initialize_display();
+    initialize_buttons();
+    set_sleep_mode(SLEEP_MODE_IDLE);
+    sleep_mode();
+
+	while(1)
+    {
+        // something woke us up
+        if(second_passed)
+        {
+            increment_time();
+            second_passed = 0;
+        }
+        if(button_pressed)
+        {
+            handle_button();
+            button_pressed = 0;
+        }
+        if(power_change)
+        {
+            handle_power();
+            power_change = 0;
+        }
+        
+        if(!(ACSR & _BV(ACO)))
+        {
+            // plugged in
+            updateDisplay( global_hours, global_minutes );
+            set_sleep_mode(SLEEP_MODE_IDLE);
+            sleep_mode();
+        }
+        else
+        {
+            set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+            sleep_mode();
+        }
+    }
+	return 0;
+}
+
+ISR(ANALOG_COMP_vect)
+{
+    power_change = 1;
+}
+
+ISR(TIMER2_OVF_vect)
+{
+    second_passed = 1;
 }
 
 ISR(PCINT0_vect)
 {
-    sei();
-    ISR_buttonPress();
+    button_pressed = 1;
 }
 
 ISR(PCINT1_vect)
 {
-    sei();
-    ISR_buttonPress();
+    button_pressed = 1;
 }
 
 ISR(PCINT2_vect)
 {
-    sei();
-    ISR_buttonPress();
+    button_pressed = 1;
 }

@@ -14,13 +14,17 @@
 #define temperature_bit 5
 
 #define button_1_port PORTD
+#define button_1_pin PIND
 #define button_1_bit 5
 
 #define button_3_port PORTD
+#define button_3_pin PIND
 #define button_3_bit 6
 
 #define button_4_port PORTB
+#define button_4_pin PINB
 #define button_4_bit 1
 
 #define button_2_port PORTC
+#define button_2_pin PINC
 #define button_2_bit 2
