@@ -166,6 +166,22 @@ void handle_button(void)
     known_time = 1;
 }
 
+uint8_t hour_24h2ampm (uint8_t hour)
+{
+    if (hour == 0)
+    {
+        return 12;
+    }
+    else if(hour < 13)
+    {
+        return hour;
+    }
+    else
+    {
+        return hour-12;
+    }
+}
+
 void increment_time(void)
 {
 	global_seconds++;
@@ -179,7 +195,7 @@ void increment_time(void)
 		global_minutes = 0;
 		global_hours++;
 	}
-	if( global_hours > 24 )
+	if( global_hours > 23 )
 	{
 		global_hours = 0;
     }
@@ -187,7 +203,7 @@ void increment_time(void)
     // Dim during night hours
     if( global_hours < 5 || global_hours > 21 )
     {
-        OCR1B = 1000;
+        OCR1B = 500;
     }
     else
     {
@@ -246,7 +262,7 @@ int main(void)
         if(!(ACSR & _BV(ACO)))
         {
             // plugged in
-            updateDisplay( global_hours, global_minutes );
+            updateDisplay( hour_24h2ampm(global_hours), global_minutes );
             set_sleep_mode(SLEEP_MODE_IDLE);
             sleep_mode();
         }
