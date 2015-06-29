@@ -1,0 +1,13 @@
+Software/default/*.eep
+Software/default/*.elf
+Software/default/*.lss
+Software/default/*.map
+Software/default/*.o
+Software/default/Makefile
+Software/default/dep/
+*.aws
+*.aps
+Hardware/__Previews/
+Hardware/History/
+Hardware/*.PrjPCBStructure
+Hardware/*.PcbDoc.htm
